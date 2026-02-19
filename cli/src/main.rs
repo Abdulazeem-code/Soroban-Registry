@@ -1,5 +1,8 @@
 mod commands;
 mod config;
+mod export;
+mod import;
+mod manifest;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -80,6 +83,20 @@ enum Commands {
         #[arg(long, default_value = "10")]
         limit: usize,
     },
+
+    Export {
+        id: String,
+        #[arg(long, default_value = "contract.tar.gz")]
+        output: String,
+        #[arg(long, default_value = ".")]
+        contract_dir: String,
+    },
+
+    Import {
+        archive: String,
+        #[arg(long, default_value = "./imported")]
+        output_dir: String,
+    },
 }
 
 #[tokio::main]
@@ -122,6 +139,12 @@ async fn main() -> Result<()> {
         }
         Commands::List { limit } => {
             commands::list(&cli.api_url, limit, network).await?;
+        }
+        Commands::Export { id, output, contract_dir } => {
+            commands::export(&cli.api_url, &id, &output, &contract_dir).await?;
+        }
+        Commands::Import { archive, output_dir } => {
+            commands::import(&cli.api_url, &archive, network, &output_dir).await?;
         }
     }
 
