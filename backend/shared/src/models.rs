@@ -148,6 +148,137 @@ impl<T> PaginatedResponse<T> {
     }
 }
 
+/// A single benchmark run result for one method invocation
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BenchmarkRun {
+    pub id: Uuid,
+    pub benchmark_id: Uuid,
+    pub iteration: i32,
+    pub execution_time_ms: f64,
+    pub cpu_instructions: Option<i64>,
+    pub memory_bytes: Option<i64>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A benchmark session: N iterations of one method on one contract version
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BenchmarkRecord {
+    pub id: Uuid,
+    pub contract_id: Uuid,
+    pub contract_version: String,
+    pub method_name: String,
+    pub iterations: i32,
+    /// JSON-encoded method arguments used for this benchmark
+    pub args_json: Option<String>,
+    /// Computed stats (populated after all runs complete)
+    pub min_ms: f64,
+    pub max_ms: f64,
+    pub avg_ms: f64,
+    pub p95_ms: f64,
+    pub p99_ms: f64,
+    pub stddev_ms: f64,
+    pub contract_size_bytes: Option<i64>,
+    pub status: BenchmarkStatus,
+    pub error_message: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+/// Status of a benchmark job
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type)]
+#[sqlx(type_name = "text", rename_all = "snake_case")]
+pub enum BenchmarkStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+}
+
+/// Performance regression alert
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct PerformanceAlert {
+    pub id: Uuid,
+    pub contract_id: Uuid,
+    pub method_name: String,
+    pub baseline_benchmark_id: Uuid,
+    pub current_benchmark_id: Uuid,
+    pub baseline_p95_ms: f64,
+    pub current_p95_ms: f64,
+    pub regression_pct: f64,
+    pub alert_threshold_pct: f64,
+    pub resolved: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+/// CLI request body — POST /contracts/:id/benchmarks
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunBenchmarkRequest {
+    /// Method name to benchmark (e.g. "transfer", "swap")
+    pub method: String,
+    /// Number of iterations to run (default 100, max 1000)
+    #[serde(default = "default_iterations")]
+    pub iterations: i32,
+    /// JSON array of arguments to pass to the method
+    pub args_json: Option<String>,
+    /// Contract version tag (e.g. "v1.2.0")
+    pub version: Option<String>,
+    /// Regression alert threshold in % (default 10.0)
+    #[serde(default = "default_threshold")]
+    pub alert_threshold_pct: f64,
+}
+
+fn default_iterations() -> i32 {
+    100
+}
+fn default_threshold() -> f64 {
+    10.0
+}
+
+/// Response for a completed benchmark
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkResponse {
+    pub benchmark: BenchmarkRecord,
+    /// Individual run timings for charting
+    pub runs: Vec<BenchmarkRun>,
+    /// Alert if regression detected vs previous baseline
+    pub alert: Option<PerformanceAlert>,
+    /// How this compares to the previous benchmark for the same method
+    pub comparison: Option<BenchmarkComparison>,
+}
+
+/// Side-by-side comparison with a previous benchmark
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkComparison {
+    pub previous_benchmark_id: Uuid,
+    pub previous_version: String,
+    pub previous_p95_ms: f64,
+    pub current_p95_ms: f64,
+    pub delta_ms: f64,
+    pub delta_pct: f64,
+    pub is_regression: bool,
+}
+
+/// Summary of all benchmarks for a contract (for the dashboard)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContractBenchmarkSummary {
+    pub contract_id: Uuid,
+    pub total_benchmarks: i64,
+    pub methods_benchmarked: Vec<String>,
+    pub latest_benchmarks: Vec<BenchmarkRecord>,
+    pub active_alerts: Vec<PerformanceAlert>,
+}
+
+/// Historical trend point for charting
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BenchmarkTrendPoint {
+    pub benchmark_id: Uuid,
+    pub version: String,
+    pub created_at: DateTime<Utc>,
+    pub p95_ms: f64,
+    pub avg_ms: f64,
+    pub min_ms: f64,
+    pub max_ms: f64,
+}
 // ═══════════════════════════════════════════════════════════════════════════
 // SECURITY AUDIT TYPES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -178,20 +309,20 @@ pub enum CheckCategory {
 impl std::fmt::Display for CheckCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            CheckCategory::InputValidation             => "Input Validation",
-            CheckCategory::StateManagement             => "State Management",
-            CheckCategory::AccessControl               => "Access Control",
-            CheckCategory::Reentrancy                  => "Reentrancy",
-            CheckCategory::NumericalSafety             => "Numerical Safety",
+            CheckCategory::InputValidation => "Input Validation",
+            CheckCategory::StateManagement => "State Management",
+            CheckCategory::AccessControl => "Access Control",
+            CheckCategory::Reentrancy => "Reentrancy",
+            CheckCategory::NumericalSafety => "Numerical Safety",
             CheckCategory::AuthenticationAuthorization => "Authentication & Authorization",
-            CheckCategory::DataSerialization           => "Data Serialization",
-            CheckCategory::ErrorHandling               => "Error Handling",
-            CheckCategory::StoragePatterns             => "Storage Patterns",
-            CheckCategory::TokenSafety                 => "Token Safety",
-            CheckCategory::EventLogging                => "Event Logging",
-            CheckCategory::Upgradeability              => "Upgradeability",
-            CheckCategory::CrossContractCalls          => "Cross-Contract Calls",
-            CheckCategory::ResourceLimits              => "Resource Limits",
+            CheckCategory::DataSerialization => "Data Serialization",
+            CheckCategory::ErrorHandling => "Error Handling",
+            CheckCategory::StoragePatterns => "Storage Patterns",
+            CheckCategory::TokenSafety => "Token Safety",
+            CheckCategory::EventLogging => "Event Logging",
+            CheckCategory::Upgradeability => "Upgradeability",
+            CheckCategory::CrossContractCalls => "Cross-Contract Calls",
+            CheckCategory::ResourceLimits => "Resource Limits",
         };
         write!(f, "{}", s)
     }

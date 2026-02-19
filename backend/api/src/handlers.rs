@@ -4,8 +4,8 @@ use axum::{
     Json,
 };
 use shared::{
-    Contract, ContractSearchParams, ContractVersion, PaginatedResponse, 
-    PublishRequest, Publisher, VerifyRequest,
+    Contract, ContractSearchParams, ContractVersion, PaginatedResponse, PublishRequest, Publisher,
+    VerifyRequest,
 };
 use uuid::Uuid;
 
@@ -25,12 +25,11 @@ pub async fn get_stats(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let verified_contracts: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM contracts WHERE is_verified = true"
-    )
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let verified_contracts: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM contracts WHERE is_verified = true")
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let total_publishers: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM publishers")
         .fetch_one(&state.db)
@@ -58,10 +57,7 @@ pub async fn list_contracts(
     let mut count_query = String::from("SELECT COUNT(*) FROM contracts WHERE 1=1");
 
     if let Some(ref q) = params.query {
-        let search_clause = format!(
-            " AND (name ILIKE '%{}%' OR description ILIKE '%{}%')",
-            q, q
-        );
+        let search_clause = format!(" AND (name ILIKE '%{}%' OR description ILIKE '%{}%')", q, q);
         query.push_str(&search_clause);
         count_query.push_str(&search_clause);
     }
@@ -79,7 +75,10 @@ pub async fn list_contracts(
         count_query.push_str(&category_clause);
     }
 
-    query.push_str(&format!(" ORDER BY created_at DESC LIMIT {} OFFSET {}", page_size, offset));
+    query.push_str(&format!(
+        " ORDER BY created_at DESC LIMIT {} OFFSET {}",
+        page_size, offset
+    ));
 
     let contracts: Vec<Contract> = sqlx::query_as(&query)
         .fetch_all(&state.db)
@@ -91,7 +90,9 @@ pub async fn list_contracts(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(PaginatedResponse::new(contracts, total, page, page_size)))
+    Ok(Json(PaginatedResponse::new(
+        contracts, total, page, page_size,
+    )))
 }
 
 /// Get a specific contract by ID
@@ -99,9 +100,7 @@ pub async fn get_contract(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Contract>, StatusCode> {
-    let contract: Contract = sqlx::query_as(
-        "SELECT * FROM contracts WHERE id = $1"
-    )
+    let contract: Contract = sqlx::query_as("SELECT * FROM contracts WHERE id = $1")
         .bind(id)
         .fetch_one(&state.db)
         .await
@@ -116,12 +115,12 @@ pub async fn get_contract_versions(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<ContractVersion>>, StatusCode> {
     let versions: Vec<ContractVersion> = sqlx::query_as(
-        "SELECT * FROM contract_versions WHERE contract_id = $1 ORDER BY created_at DESC"
+        "SELECT * FROM contract_versions WHERE contract_id = $1 ORDER BY created_at DESC",
     )
-        .bind(id)
-        .fetch_all(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .bind(id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(versions))
 }
@@ -135,12 +134,12 @@ pub async fn publish_contract(
     let publisher: Publisher = sqlx::query_as(
         "INSERT INTO publishers (stellar_address) VALUES ($1)
          ON CONFLICT (stellar_address) DO UPDATE SET stellar_address = EXCLUDED.stellar_address
-         RETURNING *"
+         RETURNING *",
     )
-        .bind(&req.publisher_address)
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .bind(&req.publisher_address)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // TODO: Fetch WASM hash from Stellar network
     let wasm_hash = "placeholder_hash".to_string();
@@ -186,16 +185,16 @@ pub async fn create_publisher(
     let created: Publisher = sqlx::query_as(
         "INSERT INTO publishers (stellar_address, username, email, github_url, website)
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING *"
+         RETURNING *",
     )
-        .bind(&publisher.stellar_address)
-        .bind(&publisher.username)
-        .bind(&publisher.email)
-        .bind(&publisher.github_url)
-        .bind(&publisher.website)
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .bind(&publisher.stellar_address)
+    .bind(&publisher.username)
+    .bind(&publisher.email)
+    .bind(&publisher.github_url)
+    .bind(&publisher.website)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(created))
 }
@@ -205,9 +204,7 @@ pub async fn get_publisher(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Publisher>, StatusCode> {
-    let publisher: Publisher = sqlx::query_as(
-        "SELECT * FROM publishers WHERE id = $1"
-    )
+    let publisher: Publisher = sqlx::query_as("SELECT * FROM publishers WHERE id = $1")
         .bind(id)
         .fetch_one(&state.db)
         .await
@@ -221,13 +218,12 @@ pub async fn get_publisher_contracts(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<Contract>>, StatusCode> {
-    let contracts: Vec<Contract> = sqlx::query_as(
-        "SELECT * FROM contracts WHERE publisher_id = $1 ORDER BY created_at DESC"
-    )
-        .bind(id)
-        .fetch_all(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let contracts: Vec<Contract> =
+        sqlx::query_as("SELECT * FROM contracts WHERE publisher_id = $1 ORDER BY created_at DESC")
+            .bind(id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(contracts))
 }

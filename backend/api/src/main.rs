@@ -1,12 +1,14 @@
-mod routes;
-mod handlers;
-mod state;
-mod checklist;
-mod detector;
-mod scoring;
 mod audit_handlers;
 mod audit_routes;
-
+mod benchmark_engine;
+mod benchmark_handlers;
+mod benchmark_routes;
+mod checklist;
+mod detector;
+mod handlers;
+mod routes;
+mod scoring;
+mod state;
 
 use anyhow::Result;
 use axum::Router;
@@ -33,9 +35,8 @@ async fn main() -> Result<()> {
         .init();
 
     // Database connection
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
-    
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
@@ -57,6 +58,7 @@ async fn main() -> Result<()> {
         .merge(routes::publisher_routes())
         .merge(routes::health_routes())
         .merge(audit_routes::security_audit_routes())
+        .merge(benchmark_routes::benchmark_routes())
         .layer(CorsLayer::permissive())
         .with_state(state);
 

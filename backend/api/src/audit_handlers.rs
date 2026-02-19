@@ -17,9 +17,9 @@ use crate::{
     state::AppState,
 };
 use shared::models::{
-    AuditCheckRow, AuditRecord, AuditResponse, CategoryScore, CheckStatus,
-    CheckWithStatus, ContractSecuritySummary, CreateAuditRequest, DetectionMethod,
-    ExportRequest, UpdateCheckRequest,
+    AuditCheckRow, AuditRecord, AuditResponse, CategoryScore, CheckStatus, CheckWithStatus,
+    ContractSecuritySummary, CreateAuditRequest, DetectionMethod, ExportRequest,
+    UpdateCheckRequest,
 };
 
 // ─────────────────────────────────────────────────────────
@@ -47,14 +47,13 @@ pub async fn get_security_audit_by_id(
     State(state): State<AppState>,
     Path((contract_id, audit_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<AuditResponse>, StatusCode> {
-    let audit: AuditRecord = sqlx::query_as(
-        "SELECT * FROM security_audits WHERE id = $1 AND contract_id = $2",
-    )
-    .bind(audit_id)
-    .bind(contract_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
+    let audit: AuditRecord =
+        sqlx::query_as("SELECT * FROM security_audits WHERE id = $1 AND contract_id = $2")
+            .bind(audit_id)
+            .bind(contract_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
 
     build_audit_response(&state, audit).await
 }
@@ -118,7 +117,7 @@ pub async fn create_security_audit(
     for item in &all {
         let (status, evidence, auto_detected) = match auto_results.get(&item.id) {
             Some(result) => (result.status.clone(), result.evidence.clone(), true),
-            None         => (CheckStatus::Pending, None, false),
+            None => (CheckStatus::Pending, None, false),
         };
 
         sqlx::query(
@@ -277,21 +276,19 @@ pub async fn export_audit_markdown(
     Path((contract_id, audit_id)): Path<(Uuid, Uuid)>,
     Query(params): Query<ExportRequest>,
 ) -> Result<Response, StatusCode> {
-    let audit: AuditRecord = sqlx::query_as(
-        "SELECT * FROM security_audits WHERE id = $1 AND contract_id = $2",
-    )
-    .bind(audit_id)
-    .bind(contract_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    let (contract_name,): (String,) =
-        sqlx::query_as("SELECT name FROM contracts WHERE id = $1")
+    let audit: AuditRecord =
+        sqlx::query_as("SELECT * FROM security_audits WHERE id = $1 AND contract_id = $2")
+            .bind(audit_id)
             .bind(contract_id)
             .fetch_one(&state.db)
             .await
             .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let (contract_name,): (String,) = sqlx::query_as("SELECT name FROM contracts WHERE id = $1")
+        .bind(contract_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
     let checks = fetch_check_rows(&state, audit_id).await?;
     let (_, category_scores) = calculate_scores(&checks);
@@ -319,10 +316,14 @@ pub async fn export_audit_markdown(
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, "text/markdown; charset=utf-8"),
-            (header::CONTENT_DISPOSITION, &format!("attachment; filename=\"{}\"", filename)),
+            (
+                header::CONTENT_DISPOSITION,
+                &format!("attachment; filename=\"{}\"", filename),
+            ),
         ],
         markdown,
-    ).into_response())
+    )
+        .into_response())
 }
 
 // ─────────────────────────────────────────────────────────
@@ -364,9 +365,9 @@ pub async fn get_checklist_definition() -> Json<serde_json::Value> {
         .iter()
         .map(|c| {
             let (detection_type, auto_patterns) = match &c.detection {
-                DetectionMethod::Automatic { patterns }     => ("automatic", patterns.clone()),
+                DetectionMethod::Automatic { patterns } => ("automatic", patterns.clone()),
                 DetectionMethod::SemiAutomatic { patterns } => ("semi_automatic", patterns.clone()),
-                DetectionMethod::Manual                     => ("manual", vec![]),
+                DetectionMethod::Manual => ("manual", vec![]),
             };
             serde_json::json!({
                 "id": c.id,
@@ -392,7 +393,10 @@ pub async fn get_checklist_definition() -> Json<serde_json::Value> {
 // Internal helpers
 // ─────────────────────────────────────────────────────────
 
-async fn fetch_check_rows(state: &AppState, audit_id: Uuid) -> Result<Vec<AuditCheckRow>, StatusCode> {
+async fn fetch_check_rows(
+    state: &AppState,
+    audit_id: Uuid,
+) -> Result<Vec<AuditCheckRow>, StatusCode> {
     sqlx::query_as("SELECT * FROM audit_checks WHERE audit_id = $1 ORDER BY check_id")
         .bind(audit_id)
         .fetch_all(&state.db)
@@ -418,24 +422,24 @@ async fn build_audit_response(
         .map(|item| {
             let row = status_map.get(&item.id);
             let (detection_type, auto_patterns) = match &item.detection {
-                DetectionMethod::Automatic { patterns }     => ("automatic", patterns.clone()),
+                DetectionMethod::Automatic { patterns } => ("automatic", patterns.clone()),
                 DetectionMethod::SemiAutomatic { patterns } => ("semi_automatic", patterns.clone()),
-                DetectionMethod::Manual                     => ("manual", vec![]),
+                DetectionMethod::Manual => ("manual", vec![]),
             };
             CheckWithStatus {
-                id:             item.id.clone(),
-                category:       item.category.to_string(),
-                title:          item.title.clone(),
-                description:    item.description.clone(),
-                severity:       format!("{:?}", item.severity),
+                id: item.id.clone(),
+                category: item.category.to_string(),
+                title: item.title.clone(),
+                description: item.description.clone(),
+                severity: format!("{:?}", item.severity),
                 detection_type: detection_type.to_string(),
                 auto_patterns,
-                remediation:    item.remediation.clone(),
-                references:     item.references.clone(),
-                status:         row.map(|r| r.status.clone()).unwrap_or_default(),
-                notes:          row.and_then(|r| r.notes.clone()),
-                auto_detected:  row.map(|r| r.auto_detected).unwrap_or(false),
-                evidence:       row.and_then(|r| r.evidence.clone()),
+                remediation: item.remediation.clone(),
+                references: item.references.clone(),
+                status: row.map(|r| r.status.clone()).unwrap_or_default(),
+                notes: row.and_then(|r| r.notes.clone()),
+                auto_detected: row.map(|r| r.auto_detected).unwrap_or(false),
+                evidence: row.and_then(|r| r.evidence.clone()),
             }
         })
         .collect();
