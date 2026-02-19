@@ -5,6 +5,7 @@ use axum::{
         rejection::{JsonRejection, QueryRejection},
         Path, Query, State,
     },
+    http::StatusCode,
     Json,
 };
 use shared::{

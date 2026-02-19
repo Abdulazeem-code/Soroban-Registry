@@ -9,14 +9,14 @@ use shared::models::{
 };
 use uuid::Uuid;
 
-use crate::error::AppError;
+use crate::error::ApiError;
 use crate::state::AppState;
 
 /// Create a new migration
 pub async fn create_migration(
     State(state): State<AppState>,
     Json(payload): Json<CreateMigrationRequest>,
-) -> Result<Json<Migration>, AppError> {
+) -> Result<Json<Migration>, ApiError> {
     let migration = sqlx::query_as!(
         Migration,
         r#"
@@ -27,7 +27,7 @@ pub async fn create_migration(
         payload.contract_id,
         payload.wasm_hash
     )
-    .fetch_one(&state.pool)
+    .fetch_one(&state.db)
     .await?;
 
     Ok(Json(migration))
@@ -38,7 +38,7 @@ pub async fn update_migration(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateMigrationStatusRequest>,
-) -> Result<Json<Migration>, AppError> {
+) -> Result<Json<Migration>, ApiError> {
     let migration = sqlx::query_as!(
         Migration,
         r#"
@@ -51,7 +51,7 @@ pub async fn update_migration(
         payload.log_output,
         id
     )
-    .fetch_one(&state.pool)
+    .fetch_one(&state.db)
     .await?;
 
     Ok(Json(migration))
@@ -60,7 +60,7 @@ pub async fn update_migration(
 /// Get all migrations
 pub async fn get_migrations(
     State(state): State<AppState>,
-) -> Result<Json<PaginatedResponse<Migration>>, AppError> {
+) -> Result<Json<PaginatedResponse<Migration>>, ApiError> {
     // For simplicity, we'll just return the last 50 migrations
     let migrations = sqlx::query_as!(
         Migration,
@@ -71,7 +71,7 @@ pub async fn get_migrations(
         LIMIT 50
         "#
     )
-    .fetch_all(&state.pool)
+    .fetch_all(&state.db)
     .await?;
 
     let total = migrations.len() as i64; // In a real app we'd do a count query
@@ -84,7 +84,7 @@ pub async fn get_migrations(
 pub async fn get_migration(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<Migration>, AppError> {
+) -> Result<Json<Migration>, ApiError> {
     let migration = sqlx::query_as!(
         Migration,
         r#"
@@ -94,9 +94,9 @@ pub async fn get_migration(
         "#,
         id
     )
-    .fetch_optional(&state.pool)
+    .fetch_optional(&state.db)
     .await?
-    .ok_or(AppError::NotFound("Migration not found".to_string()))?;
+    .ok_or(ApiError::NotFound("Migration not found".to_string()))?;
 
     Ok(Json(migration))
 }
