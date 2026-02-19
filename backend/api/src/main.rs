@@ -1,3 +1,5 @@
+mod cache;
+mod error;
 mod handlers;
 mod rate_limit;
 mod routes;

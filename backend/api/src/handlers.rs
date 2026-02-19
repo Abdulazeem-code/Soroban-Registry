@@ -1,5 +1,6 @@
 pub mod migrations;
 
+#[allow(unused_imports)]
 use axum::{
     extract::{
         rejection::{JsonRejection, QueryRejection},
@@ -15,6 +16,8 @@ use shared::{
     PaginatedResponse, PublishRequest, Publisher, SwitchDeploymentRequest, VerifyRequest,
 };
 use uuid::Uuid;
+use std::time::Duration;
+use serde::Deserialize;
 
 use crate::{
     error::{ApiError, ApiResult},
@@ -90,7 +93,7 @@ pub async fn get_stats(
         sqlx::query_scalar("SELECT COUNT(*) FROM contracts WHERE is_verified = true")
             .fetch_one(&state.db)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|err| db_internal_error("count verified contracts", err))?;
 
     let total_publishers: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM publishers")
         .fetch_one(&state.db)
@@ -153,7 +156,7 @@ pub async fn list_contracts(
 
     query.push_str(&format!(
         " ORDER BY created_at DESC LIMIT {} OFFSET {}",
-        page_size, offset
+        limit, offset
     ));
 
     let contracts: Vec<Contract> = match sqlx::query_as(&query)
@@ -194,16 +197,21 @@ pub async fn list_contracts(
     }
 
     let mut response = (StatusCode::OK, Json(paginated)).into_response();
+    
+    if !links.is_empty() {
+        response.headers_mut().insert(
+            axum::http::header::LINK, 
+            links.join(", ").parse().unwrap_or(axum::http::HeaderValue::from_static(""))
+        );
+    }
 
-    Ok(Json(PaginatedResponse::new(
-        contracts, total, page, page_size,
-    )))
+    response
 }
 
 pub async fn get_contract(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<Contract>, StatusCode> {
+) -> ApiResult<Json<Contract>> {
     let contract: Contract = sqlx::query_as("SELECT * FROM contracts WHERE id = $1")
         .bind(id)
         .fetch_one(&state.db)
@@ -239,7 +247,7 @@ pub async fn get_contract_versions(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Vec<ContractVersion>>> {
-    let contract_uuid = Uuid::parse_str(&id).map_err(|_| {
+    let _contract_uuid = Uuid::parse_str(&id).map_err(|_| {
         ApiError::bad_request(
             "InvalidContractId",
             format!("Invalid contract ID format: {}", id),
@@ -252,7 +260,7 @@ pub async fn get_contract_versions(
     .bind(id)
     .fetch_all(&state.db)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|err| db_internal_error("get contract versions", err))?;
 
     Ok(Json(versions))
 }
@@ -273,7 +281,7 @@ pub async fn publish_contract(
     .bind(&req.publisher_address)
     .fetch_one(&state.db)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|err| db_internal_error("ensure publisher", err))?;
 
     // TODO: Fetch WASM hash from Stellar network
     let wasm_hash = "placeholder_hash".to_string();
@@ -342,7 +350,7 @@ pub async fn create_publisher(
     .bind(&publisher.website)
     .fetch_one(&state.db)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|err| db_internal_error("create publisher", err))?;
 
     Ok(Json(created))
 }
@@ -351,7 +359,7 @@ pub async fn create_publisher(
 pub async fn get_publisher(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<Publisher>, StatusCode> {
+) -> ApiResult<Json<Publisher>> {
     let publisher: Publisher = sqlx::query_as("SELECT * FROM publishers WHERE id = $1")
         .bind(id)
         .fetch_one(&state.db)
@@ -371,13 +379,13 @@ pub async fn get_publisher(
 pub async fn get_publisher_contracts(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<Vec<Contract>>, StatusCode> {
+) -> ApiResult<Json<Vec<Contract>>> {
     let contracts: Vec<Contract> =
         sqlx::query_as("SELECT * FROM contracts WHERE publisher_id = $1 ORDER BY created_at DESC")
             .bind(id)
             .fetch_all(&state.db)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|err| db_internal_error("get publisher contracts", err))?;
 
     Ok(Json(contracts))
 }
@@ -727,4 +735,82 @@ pub async fn get_deployment_status(
 
 pub async fn route_not_found() -> ApiError {
     ApiError::not_found("RouteNotFound", "The requested endpoint does not exist")
+}
+
+#[derive(Deserialize)]
+pub struct CacheParams {
+    pub cache: Option<String>,
+}
+
+pub async fn get_contract_state(
+    State(state): State<AppState>,
+    Path((contract_id, key)): Path<(String, String)>,
+    Query(params): Query<CacheParams>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let use_cache = params.cache.as_deref() == Some("on");
+
+    if use_cache {
+        if let Some(cached) = state.cache.get(&contract_id, &key).await {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&cached) {
+                 return Ok(Json(val));
+            }
+        }
+    }
+
+    // Cache miss or disabled
+    let start = std::time::Instant::now();
+    
+    // Simulate RPC call (fetch from contract)
+    // In production, this would use a Soroban RPC client to get the ledger entry.
+    // We simulate 100ms latency to represent network round-trip.
+    tokio::time::sleep(Duration::from_millis(100)).await; 
+    let value = serde_json::json!({ 
+        "contract_id": contract_id,
+        "key": key,
+        "value": format!("state_of_{}_{}", contract_id, key), 
+        "fetched_at": chrono::Utc::now().to_rfc3339() 
+    });
+    
+    if use_cache {
+        state.cache.record_uncached_latency(start.elapsed());
+        state.cache.put(&contract_id, &key, value.to_string(), None).await;
+    }
+
+    Ok(Json(value))
+}
+
+pub async fn update_contract_state(
+    State(state): State<AppState>,
+    Path((contract_id, key)): Path<(String, String)>,
+    Json(_payload): Json<serde_json::Value>,
+) -> ApiResult<Json<serde_json::Value>> {
+    // Simulate write latency (network round-trip to generic transaction submission)
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    
+    // Invalidate the cache entry
+    state.cache.invalidate(&contract_id, &key).await;
+    
+    Ok(Json(serde_json::json!({ "status": "updated", "invalidated": true })))
+}
+
+pub async fn get_cache_stats(
+    State(state): State<AppState>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let metrics = state.cache.metrics();
+    // Helper to safely load usize for json serialization
+    let hits = metrics.hits.load(std::sync::atomic::Ordering::Relaxed);
+    let misses = metrics.misses.load(std::sync::atomic::Ordering::Relaxed);
+    let cached_count = metrics.cached_count.load(std::sync::atomic::Ordering::Relaxed);
+    
+    Ok(Json(serde_json::json!({
+        "metrics": {
+            "hit_rate_percent": metrics.hit_rate(),
+            "avg_cached_latency_us": metrics.avg_cached_latency(),
+            "avg_uncached_latency_us": metrics.avg_uncached_latency(),
+            "improvement_factor": metrics.improvement_factor(),
+            "hits": hits,
+            "misses": misses,
+            "cached_entries_count": cached_count,
+        }
+    })))
 }

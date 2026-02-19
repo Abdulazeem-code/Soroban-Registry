@@ -20,6 +20,7 @@ pub fn contract_routes() -> Router<AppState> {
         .route("/api/deployments/switch", post(handlers::switch_deployment))
         .route("/api/deployments/:contract_id/rollback", post(handlers::rollback_deployment))
         .route("/api/deployments/health", post(handlers::report_health_check))
+        .route("/api/contracts/:id/state/:key", get(handlers::get_contract_state).post(handlers::update_contract_state))
 }
 
 /// Publisher-related routes
@@ -38,6 +39,7 @@ pub fn health_routes() -> Router<AppState> {
     Router::new()
         .route("/health", get(handlers::health_check))
         .route("/api/stats", get(handlers::get_stats))
+        .route("/api/cache/stats", get(handlers::get_cache_stats))
 }
 
 /// Migration-related routes
