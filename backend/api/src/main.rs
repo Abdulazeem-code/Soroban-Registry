@@ -1,16 +1,34 @@
+mod aggregation;
+mod analytics;
+mod audit_handlers;
+mod audit_routes;
+mod benchmark_engine;
+mod benchmark_handlers;
+mod benchmark_routes;
+mod cache;
+mod cache_benchmark;
+mod checklist;
+mod detector;
+mod error;
 mod handlers;
+mod multisig_handlers;
+mod multisig_routes;
+mod models;
+mod rate_limit;
 mod routes;
+mod scoring;
 mod state;
 
 use anyhow::Result;
 use axum::http::{header, HeaderValue, Method};
-use axum::Router;
+use axum::{middleware, Router};
 use dotenv::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use crate::rate_limit::RateLimitState;
 use crate::state::AppState;
 
 #[tokio::main]
@@ -42,8 +60,12 @@ async fn main() -> Result<()> {
 
     tracing::info!("Database connected and migrations applied");
 
+    // Spawn the hourly analytics aggregation background task
+    aggregation::spawn_aggregation_task(pool.clone());
+
     // Create app state
     let state = AppState::new(pool);
+    let rate_limit_state = RateLimitState::from_env();
 
     let cors = CorsLayer::new()
         .allow_origin([
@@ -58,6 +80,17 @@ async fn main() -> Result<()> {
         .merge(routes::contract_routes())
         .merge(routes::publisher_routes())
         .merge(routes::health_routes())
+        .merge(routes::migration_routes())
+        .merge(multisig_routes::multisig_routes())
+        .merge(audit_routes::audit_routes())
+        .merge(benchmark_routes::benchmark_routes())
+        .fallback(handlers::route_not_found)
+        .layer(middleware::from_fn(request_logger))
+        .layer(middleware::from_fn_with_state(
+            rate_limit_state,
+            rate_limit::rate_limit_middleware,
+        ))
+        .layer(CorsLayer::permissive())
         .layer(cors)
         .with_state(state);
 
@@ -66,7 +99,29 @@ async fn main() -> Result<()> {
     tracing::info!("API server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
+}
+
+async fn request_logger(
+    req: axum::http::Request<axum::body::Body>,
+    next: middleware::Next,
+) -> axum::response::Response {
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+    let start = std::time::Instant::now();
+
+    let response = next.run(req).await;
+
+    let elapsed = start.elapsed().as_millis();
+    let status = response.status().as_u16();
+
+    tracing::info!("{method} {uri} {status} {elapsed}ms");
+
+    response
 }
