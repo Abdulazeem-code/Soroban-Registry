@@ -79,7 +79,18 @@ export function GraphContent() {
         [demoMode, demoNodeCount]
     );
 
-    const graphData = demoMode ? demoData : apiData;
+    // Apply client-side network filtering for demo mode
+    const filteredDemoData = useMemo(() => {
+        if (!demoData || !networkFilter) return demoData;
+        const filteredNodes = demoData.nodes.filter((n) => n.network === networkFilter);
+        const nodeIds = new Set(filteredNodes.map((n) => n.id));
+        const filteredEdges = demoData.edges.filter(
+            (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
+        );
+        return { nodes: filteredNodes, edges: filteredEdges };
+    }, [demoData, networkFilter]);
+
+    const graphData = demoMode ? filteredDemoData : apiData;
 
     // Compute dependency counts for critical node detection
     const dependentCounts = useMemo(() => {
