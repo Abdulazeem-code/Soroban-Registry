@@ -1,4 +1,4 @@
-﻿pub mod migrations;
+pub mod migrations;
 
 use crate::trust::{compute_trust_score, TrustInput};
 use crate::validation::{ValidatedJson, Validatable};

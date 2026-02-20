@@ -196,6 +196,30 @@ pub struct ContractSearchParams {
     pub limit: Option<i64>,
 }
 
+// Add to shared/src/lib.rs after ContractSearchParams
+
+/// Pagination params for contract versions (limit/offset style)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionPaginationParams {
+    #[serde(default = "default_version_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+
+fn default_version_limit() -> i64 {
+    20
+}
+
+/// Paginated version response (limit/offset style per issue #32 spec)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaginatedVersionResponse {
+    pub items: Vec<ContractVersion>,
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
+}
+
 /// Paginated response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedResponse<T> {
@@ -821,6 +845,9 @@ pub struct ContractAuditLog {
     pub new_value:   Option<serde_json::Value>,
     pub changed_by:  String,
     pub timestamp:   DateTime<Utc>,
+    pub previous_hash: Option<String>,
+    pub hash:        Option<String>,
+    pub signature:   Option<String>,
 }
 
 /// Full contract state captured at each audited change in `contract_snapshots`.

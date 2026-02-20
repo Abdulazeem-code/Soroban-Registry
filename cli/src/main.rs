@@ -171,6 +171,24 @@ pub enum Commands {
         action: MultisigCommands,
     },
 
+    /// Fuzz testing for contracts
+    Fuzz {
+        #[arg(long)]
+        contract_path: String,
+        #[arg(long)]
+        duration: u64,
+        #[arg(long)]
+        timeout: u64,
+        #[arg(long)]
+        threads: u32,
+        #[arg(long)]
+        max_cases: u32,
+        #[arg(long)]
+        output: String,
+        #[arg(long)]
+        minimize: bool,
+    },
+
     /// Profile contract execution performance
     Profile {
         /// Path to contract file
@@ -224,14 +242,24 @@ pub enum Commands {
         #[command(subcommand)]
         action: SlaCommands,
     },
+    
     Config {
         #[command(subcommand)]
         action: ConfigSubcommands,
-    }
+    },
+    
+    ScanDeps {
+        #[arg(long)]
+        contract_id: String,
+        #[arg(long, default_value = ",")]
+        dependencies: String,
+        #[arg(long, default_value_t = false)]
+        fail_on_high: bool,
+    },
 }
 
 #[derive(Subcommand)]
-enum ConfigSubcommands {
+pub enum ConfigSubcommands {
     Get {
         #[arg(long)]
         contract_id: String,
@@ -266,6 +294,44 @@ enum ConfigSubcommands {
         #[arg(long)]
         created_by: String,
     },
+
+    /// Validate a contract function call for type safety
+    ValidateCall {
+        /// Contract ID to validate against
+        contract_id: String,
+        /// Method name to call
+        method_name: String,
+        /// Parameters (positional arguments after method name)
+        #[arg(trailing_var_arg = true)]
+        params: Vec<String>,
+        /// Enable strict mode (no implicit type conversions)
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Generate type-safe bindings for a contract
+    GenerateBindings {
+        /// Contract ID to generate bindings for
+        contract_id: String,
+        /// Output language: typescript or rust
+        #[arg(long, default_value = "typescript")]
+        language: String,
+        /// Output file path (defaults to stdout)
+        #[arg(long, short)]
+        output: Option<String>,
+    },
+
+    /// List functions available on a contract
+    ListFunctions {
+        /// Contract ID to list functions for
+        contract_id: String,
+    },
+
+    /// Get trust score for a contract
+    TrustScore {
+        /// Contract UUID to score
+        contract_id: String,
+    },
 }
 
 /// Sub-commands for the `sla` group
@@ -287,12 +353,11 @@ pub enum SlaCommands {
         /// Contract identifier
         id: String,
     },
-	     /// Show the trust score and breakdown for a contract
+    /// Show the trust score and breakdown for a contract
     TrustScore {
         /// Contract UUID to score
         contract_id: String,
     },
-
 }
 
 /// Sub-commands for the `multisig` group
@@ -368,12 +433,11 @@ pub enum PatchCommands {
         #[arg(long, default_value = "100")]
         rollout: u8,
     },
-    Notify {
-        #[arg(long)]
-        patch_id: String,
-    },
     /// Notify subscribers about a patch
-    Notify { patch_id: String },
+    Notify { 
+        #[arg(long)]
+        patch_id: String 
+    },
     /// Apply a patch to a specific contract
     Apply {
         #[arg(long)]
@@ -381,7 +445,6 @@ pub enum PatchCommands {
         #[arg(long)]
         patch_id: String,
     },
-
     /// Manage contract dependencies
     Deps {
         #[command(subcommand)]
@@ -389,8 +452,8 @@ pub enum PatchCommands {
     },
 }
 
-#[derive(Subcommand)]
-enum DepsCommands {
+#[derive(Debug, Subcommand)]
+pub enum DepsCommands {
     /// List dependencies for a contract
     List {
         /// Contract ID
@@ -489,13 +552,12 @@ async fn main() -> Result<()> {
                 log::debug!("Command: patch apply | contract_id={} patch_id={}", contract_id, patch_id);
                 commands::patch_apply(&cli.api_url, &contract_id, &patch_id).await?;
             }
+            PatchCommands::Deps { command } => match command {
+                DepsCommands::List { contract_id } => {
+                    commands::deps_list(&cli.api_url, &contract_id).await?;
+                }
+            }
         },
-
-		  Commands::TrustScore { contract_id } => {
-            log::debug!("Command: trust-score | contract_id={}", contract_id);
-            commands::trust_score(&cli.api_url, &contract_id, network).await?;
-        },
-
         // ── Multi-sig commands (issue #47) ───────────────────────────────────
         Commands::Multisig { action } => match action {
             MultisigCommands::CreatePolicy { name, threshold, signers, expiry_secs, created_by } => {
@@ -542,8 +604,6 @@ async fn main() -> Result<()> {
                 multisig::list_proposals(&cli.api_url, status.as_deref(), limit).await?;
             }
         },
-<<<<<<< feat/contract-fuzzing-tool
-
         Commands::Fuzz {
             contract_path,
             duration,
@@ -564,7 +624,6 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-=======
         Commands::Profile {
             contract_path,
             method,
@@ -607,9 +666,13 @@ async fn main() -> Result<()> {
             SlaCommands::Status { id } => {
                 log::debug!("Command: sla status | id={}", id);
                 commands::sla_status(&id)?;
-        Commands::Deps { command } => match command {
-            DepsCommands::List { contract_id } => {
-                commands::deps_list(&cli.api_url, &contract_id).await?;
+            }
+            SlaCommands::TrustScore { contract_id } => {
+                log::debug!("Command: trust-score | contract_id={}", contract_id);
+                // NOTE: Make sure commands::trust_score isn't expecting `network` since SlaCommands doesn't define it
+                // I removed `network` from the function call here because it wasn't available in scope. 
+                // Adjust if you need to fetch global network config instead.
+                commands::trust_score(&cli.api_url, &contract_id).await?;
             }
         },
         Commands::Config { action } => match action {
@@ -626,7 +689,9 @@ async fn main() -> Result<()> {
                 commands::config_rollback(&cli.api_url, &contract_id, &environment, version, &created_by).await?;
             }
         },
->>>>>>> main
+        Commands::ScanDeps { contract_id, dependencies, fail_on_high } => {
+            commands::scan_deps(&cli.api_url, &contract_id, &dependencies, fail_on_high).await?;
+        }
     }
 
     Ok(())

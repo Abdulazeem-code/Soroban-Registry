@@ -40,10 +40,16 @@ mod routes;
 mod state;
 mod template_handlers;
 mod template_routes;
+mod scanner_service;
+mod scan_handlers;
+mod scan_routes;
 mod trust;
 mod health_monitor;
 mod migration_cli;
 mod validation;
+mod type_safety;
+mod type_safety_handlers;
+mod type_safety_routes;
 
 use anyhow::Result;
 use axum::http::{header, HeaderValue, Method};
@@ -843,9 +849,11 @@ async fn main() -> Result<()> {
         .merge(config_routes::config_routes())
         .merge(contract_history_routes::contract_history_routes())
         .merge(template_routes::template_routes())
+        .merge(scan_routes::scan_routes())
         .route("/metrics", get(observability::metrics_handler))
         .merge(routes::observability_routes())
         .merge(residency_routes::residency_routes())
+        .merge(type_safety_routes::type_safety_routes())
         .fallback(handlers::route_not_found)
         .layer(middleware::from_fn(metrics_middleware))
         .layer(middleware::from_fn_with_state(

@@ -65,6 +65,9 @@ clap = { version = "4.5", features = ["derive"] }
 aes-gcm = "0.10"
 rand = "0.8"
 base64 = "0.22"
+sha2 = "0.10"
+hex = "0.4"
+
 # Observability
 prometheus = { version = "0.13", features = ["process"] }
 opentelemetry = { version = "0.27", features = ["trace"] }
