@@ -6,6 +6,8 @@ mod benchmark_engine;
 mod benchmark_handlers;
 mod benchmark_routes;
 mod checklist;
+mod config_handlers;
+mod config_routes;
 mod contract_history_handlers;
 mod contract_history_routes;
 mod detector;
@@ -69,6 +71,7 @@ async fn main() -> Result<()> {
         .merge(routes::migration_routes())
         .merge(audit_routes::security_audit_routes())
         .merge(benchmark_routes::benchmark_routes())
+        .merge(config_routes::config_routes())
         .merge(contract_history_routes::contract_history_routes())
         .merge(template_routes::template_routes())
         .route("/metrics", get(observability::metrics_handler))

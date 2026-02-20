@@ -612,3 +612,136 @@ pub async fn template_clone(
 
     Ok(())
 }
+
+pub async fn config_get(api_url: &str, contract_id: &str, environment: &str) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/contracts/{}/config?environment={}", api_url, contract_id, environment);
+
+    let response = client.get(&url).send().await.context("Failed to fetch configuration")?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("Failed to get config: {}", response.text().await.unwrap_or_default());
+    }
+
+    let config: serde_json::Value = response.json().await?;
+
+    println!("\n{}", "Contract Configuration (Latest):".bold().cyan());
+    println!("{}", "=".repeat(80).cyan());
+    println!("{}: {}", "Contract ID".bold(), contract_id);
+    println!("{}: {}", "Environment".bold(), environment);
+    println!("{}: {}", "Version".bold(), config["version"].as_i64().unwrap_or(0));
+    println!("{}: {}", "Contains Secrets".bold(), config["has_secrets"].as_bool().unwrap_or(false));
+    println!("{}: {}", "Created By".bold(), config["created_by"].as_str().unwrap_or("Unknown"));
+    println!("{}:", "Config Data".bold());
+    println!("{}", serde_json::to_string_pretty(&config["config_data"]).unwrap_or_default().green());
+    println!();
+
+    Ok(())
+}
+
+pub async fn config_set(
+    api_url: &str,
+    contract_id: &str,
+    environment: &str,
+    config_data: &str,
+    secrets_data: Option<&str>,
+    created_by: &str,
+) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/contracts/{}/config", api_url, contract_id);
+
+    let mut payload = json!({
+        "environment": environment,
+        "config_data": serde_json::from_str::<serde_json::Value>(config_data).context("Invalid config JSON")?,
+        "created_by": created_by,
+    });
+
+    if let Some(sec) = secrets_data {
+        let sec_json: serde_json::Value = serde_json::from_str(sec).context("Invalid secrets JSON")?;
+        payload["secrets_data"] = sec_json;
+    }
+
+    println!("\n{}", "Publishing configuration...".bold().cyan());
+
+    let response = client.post(&url).json(&payload).send().await.context("Failed to set configuration")?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("Failed to set config: {}", response.text().await.unwrap_or_default());
+    }
+
+    let config: serde_json::Value = response.json().await?;
+
+    println!("{}", "✓ Configuration published successfully!".green().bold());
+    println!("  {}: {}", "Environment".bold(), environment);
+    println!("  {}: {}", "New Version".bold(), config["version"].as_i64().unwrap_or(0));
+    println!();
+
+    Ok(())
+}
+
+pub async fn config_history(api_url: &str, contract_id: &str, environment: &str) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/contracts/{}/config/history?environment={}", api_url, contract_id, environment);
+
+    let response = client.get(&url).send().await.context("Failed to fetch configuration history")?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("Failed to get config history: {}", response.text().await.unwrap_or_default());
+    }
+
+    let configs: Vec<serde_json::Value> = response.json().await?;
+
+    println!("\n{}", "Configuration History:".bold().cyan());
+    println!("{}", "=".repeat(80).cyan());
+
+    if configs.is_empty() {
+        println!("{}", "No configurations found.".yellow());
+        return Ok(());
+    }
+
+    for (i, config) in configs.iter().enumerate() {
+        println!(
+            "  {}. {} (v{}) - By: {}",
+            i + 1,
+            config["created_at"].as_str().unwrap_or("Unknown Date").bright_black(),
+            config["version"].as_i64().unwrap_or(0),
+            config["created_by"].as_str().unwrap_or("Unknown").bright_blue()
+        );
+    }
+    println!();
+
+    Ok(())
+}
+
+pub async fn config_rollback(
+    api_url: &str,
+    contract_id: &str,
+    environment: &str,
+    version: i32,
+    created_by: &str,
+) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/contracts/{}/config/rollback?environment={}", api_url, contract_id, environment);
+
+    let payload = json!({
+        "roll_back_to_version": version,
+        "created_by": created_by,
+    });
+
+    println!("\n{}", format!("Rolling back configuration to v{}...", version).bold().cyan());
+
+    let response = client.post(&url).json(&payload).send().await.context("Failed to rollback configuration")?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("Failed to rollback config: {}", response.text().await.unwrap_or_default());
+    }
+
+    let config: serde_json::Value = response.json().await?;
+
+    println!("{}", "✓ Configuration rolled back successfully!".green().bold());
+    println!("  {}: {}", "Environment".bold(), environment);
+    println!("  {}: {}", "New Active Version".bold(), config["version"].as_i64().unwrap_or(0));
+    println!();
+
+    Ok(())
+}

@@ -96,6 +96,48 @@ enum Commands {
         #[command(subcommand)]
         action: TemplateCommands,
     },
+    Config {
+        #[command(subcommand)]
+        action: ConfigSubcommands,
+    }
+}
+
+#[derive(Subcommand)]
+enum ConfigSubcommands {
+    Get {
+        #[arg(long)]
+        contract_id: String,
+        #[arg(long)]
+        environment: String,
+    },
+    Set {
+        #[arg(long)]
+        contract_id: String,
+        #[arg(long)]
+        environment: String,
+        #[arg(long)]
+        config_data: String,
+        #[arg(long)]
+        secrets_data: Option<String>,
+        #[arg(long)]
+        created_by: String,
+    },
+    History {
+        #[arg(long)]
+        contract_id: String,
+        #[arg(long)]
+        environment: String,
+    },
+    Rollback {
+        #[arg(long)]
+        contract_id: String,
+        #[arg(long)]
+        environment: String,
+        #[arg(long)]
+        version: i32,
+        #[arg(long)]
+        created_by: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -215,6 +257,20 @@ async fn main() -> Result<()> {
                     output_dir.as_deref(),
                 )
                 .await?;
+            }
+        },
+        Commands::Config { action } => match action {
+            ConfigSubcommands::Get { contract_id, environment } => {
+                commands::config_get(&cli.api_url, &contract_id, &environment).await?;
+            }
+            ConfigSubcommands::Set { contract_id, environment, config_data, secrets_data, created_by } => {
+                commands::config_set(&cli.api_url, &contract_id, &environment, &config_data, secrets_data.as_deref(), &created_by).await?;
+            }
+            ConfigSubcommands::History { contract_id, environment } => {
+                commands::config_history(&cli.api_url, &contract_id, &environment).await?;
+            }
+            ConfigSubcommands::Rollback { contract_id, environment, version, created_by } => {
+                commands::config_rollback(&cli.api_url, &contract_id, &environment, version, &created_by).await?;
             }
         },
     }
