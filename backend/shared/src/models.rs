@@ -23,15 +23,28 @@ pub struct Contract {
     pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub is_maintenance: bool,
 }
 
 /// Network where the contract is deployed
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "network_type", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum Network {
     Mainnet,
     Testnet,
     Futurenet,
+}
+
+impl std::fmt::Display for Network {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Network::Mainnet => write!(f, "mainnet"),
+            Network::Testnet => write!(f, "testnet"),
+            Network::Futurenet => write!(f, "futurenet"),
+        }
+    }
 }
 
 /// Contract version information
@@ -90,6 +103,33 @@ pub struct ContractStats {
     pub total_interactions: i64,
     pub unique_users: i64,
     pub last_interaction: Option<DateTime<Utc>>,
+}
+
+/// GraphNode (minimal contract info for graph rendering)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphNode {
+    pub id: Uuid,
+    pub contract_id: String,
+    pub name: String,
+    pub network: Network,
+    pub is_verified: bool,
+    pub category: Option<String>,
+    pub tags: Vec<String>,
+}
+
+/// Graph edge (dependency relationship)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphEdge {
+    pub source: Uuid,
+    pub target: Uuid,
+    pub dependency_type: String,
+}
+
+/// Full graph response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphResponse {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
 }
 
 /// Request to publish a new contract
@@ -156,6 +196,30 @@ pub struct ContractSearchParams {
     pub page: Option<i64>,
     #[serde(alias = "page_size")]
     pub limit: Option<i64>,
+}
+
+// Add to shared/src/lib.rs after ContractSearchParams
+
+/// Pagination params for contract versions (limit/offset style)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionPaginationParams {
+    #[serde(default = "default_version_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+
+fn default_version_limit() -> i64 {
+    20
+}
+
+/// Paginated version response (limit/offset style per issue #32 spec)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaginatedVersionResponse {
+    pub items: Vec<ContractVersion>,
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
 }
 
 /// Paginated response
@@ -783,6 +847,13 @@ pub struct ContractAuditLog {
     pub new_value: Option<serde_json::Value>,
     pub changed_by: String,
     pub timestamp: DateTime<Utc>,
+    pub old_value:   Option<serde_json::Value>,
+    pub new_value:   Option<serde_json::Value>,
+    pub changed_by:  String,
+    pub timestamp:   DateTime<Utc>,
+    pub previous_hash: Option<String>,
+    pub hash:        Option<String>,
+    pub signature:   Option<String>,
 }
 
 /// Full contract state captured at each audited change in `contract_snapshots`.
@@ -859,6 +930,16 @@ pub struct ProposalSignature {
 }
 
 /// Paginated response for audit log
+// TODO: Implement missing types: DeployProposal, MultisigPolicy, ProposalSignature
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct ProposalWithSignatures {
+//     pub proposal: DeployProposal,
+//     pub policy: MultisigPolicy,
+//     pub signatures: Vec<ProposalSignature>,
+//     /// How many more signatures are needed to reach the threshold
+//     pub signatures_needed: i32,
+// }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProposalWithSignatures {
     pub proposal: DeployProposal,
@@ -873,4 +954,221 @@ pub struct AuditLogPage {
     pub total: i64,
     pub page: i64,
     pub total_pages: i64,
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Config Management types
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Represents a contract configuration version in the registry
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ContractConfig {
+    pub id: Uuid,
+    pub contract_id: Uuid,
+    pub environment: String,
+    pub version: i32,
+    pub config_data: serde_json::Value,
+    pub secrets_data: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+    pub created_by: String,
+}
+
+/// Request to create a new configuration version
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigCreateRequest {
+    pub environment: String,
+    pub config_data: serde_json::Value,
+    pub secrets_data: Option<serde_json::Value>,
+    pub created_by: String,
+}
+
+/// Request to rollback to an old configuration version
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigRollbackRequest {
+    pub roll_back_to_version: i32,
+    pub created_by: String,
+}
+
+/// Response object for returning configurations (without secrets_data when returning publicly)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContractConfigResponse {
+    pub id: Uuid,
+    pub contract_id: Uuid,
+    pub environment: String,
+    pub version: i32,
+    pub config_data: serde_json::Value,
+    pub has_secrets: bool, // Indicator instead of returning actual secrets
+    pub created_at: DateTime<Utc>,
+    pub created_by: String,
+}
+
+impl From<ContractConfig> for ContractConfigResponse {
+    fn from(config: ContractConfig) -> Self {
+        Self {
+            id: config.id,
+            contract_id: config.contract_id,
+            environment: config.environment,
+            version: config.version,
+            config_data: config.config_data,
+            has_secrets: config.secrets_data.is_some(),
+            created_at: config.created_at,
+            created_by: config.created_by,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DATA RESIDENCY CONTROLS  (issue #100)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "residency_decision", rename_all = "lowercase")]
+pub enum ResidencyDecision {
+    Allowed,
+    Denied,
+}
+
+impl std::fmt::Display for ResidencyDecision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Allowed => write!(f, "allowed"),
+            Self::Denied  => write!(f, "denied"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ResidencyPolicy {
+    pub id:              Uuid,
+    pub contract_id:     String,
+    pub allowed_regions: Vec<String>,
+    pub description:     Option<String>,
+    pub is_active:       bool,
+    pub created_by:      String,
+    pub created_at:      DateTime<Utc>,
+    pub updated_at:      DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ResidencyAuditLog {
+    pub id:               Uuid,
+    pub policy_id:        Uuid,
+    pub contract_id:      String,
+    pub requested_region: String,
+    pub decision:         ResidencyDecision,
+    pub action:           String,
+    pub requested_by:     Option<String>,
+    pub reason:           Option<String>,
+    pub created_at:       DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ResidencyViolation {
+    pub id:               Uuid,
+    pub policy_id:        Uuid,
+    pub contract_id:      String,
+    pub attempted_region: String,
+    pub action:           String,
+    pub attempted_by:     Option<String>,
+    pub prevented_at:     DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateResidencyPolicyRequest {
+    pub contract_id:     String,
+    pub allowed_regions: Vec<String>,
+    pub description:     Option<String>,
+    pub created_by:      String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateResidencyPolicyRequest {
+    pub allowed_regions: Option<Vec<String>>,
+    pub description:     Option<String>,
+    pub is_active:       Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckResidencyRequest {
+    pub policy_id:        Uuid,
+    pub contract_id:      String,
+    pub requested_region: String,
+    pub action:           String,
+    pub requested_by:     Option<String>,
+}
+
+impl std::fmt::Display for DeploymentEnvironment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DeploymentEnvironment::Blue => write!(f, "blue"),
+            DeploymentEnvironment::Green => write!(f, "green"),
+        }
+    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListResidencyLogsParams {
+    pub contract_id: Option<String>,
+    pub limit:       Option<i64>,
+    pub page:        Option<i64>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTRACT EVENT TYPES (issue #44)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A contract event emitted during execution
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ContractEvent {
+    pub id: Uuid,
+    pub contract_id: String,
+    pub topic: String,
+    pub data: Option<serde_json::Value>,
+    pub ledger_sequence: i64,
+    pub transaction_hash: Option<String>,
+    pub timestamp: DateTime<Utc>,
+    pub network: Network,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Query parameters for searching events
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventQueryParams {
+    pub topic: Option<String>,
+    pub data_pattern: Option<String>,
+    pub from_timestamp: Option<DateTime<Utc>>,
+    pub to_timestamp: Option<DateTime<Utc>>,
+    pub from_ledger: Option<i64>,
+    pub to_ledger: Option<i64>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// Request to index a new event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexEventRequest {
+    pub contract_id: String,
+    pub topic: String,
+    pub data: Option<serde_json::Value>,
+    pub ledger_sequence: i64,
+    pub transaction_hash: Option<String>,
+    pub network: Network,
+}
+
+/// Event statistics for a contract
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventStats {
+    pub contract_id: String,
+    pub total_events: i64,
+    pub unique_topics: i64,
+    pub first_event: Option<DateTime<Utc>>,
+    pub last_event: Option<DateTime<Utc>>,
+    pub events_by_topic: serde_json::Value,
+}
+
+/// CSV export response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventExport {
+    pub contract_id: String,
+    pub events: Vec<ContractEvent>,
+    pub exported_at: DateTime<Utc>,
+    pub total_count: i64,
 }
