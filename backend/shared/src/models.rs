@@ -381,6 +381,9 @@ pub struct ContractAuditLog {
     pub new_value:   Option<serde_json::Value>,
     pub changed_by:  String,
     pub timestamp:   DateTime<Utc>,
+    pub previous_hash: Option<String>,
+    pub hash:        Option<String>,
+    pub signature:   Option<String>,
 }
 
 /// Full contract state captured at each audited change in `contract_snapshots`.
