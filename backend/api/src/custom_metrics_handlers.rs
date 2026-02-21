@@ -7,7 +7,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use shared::{CustomMetric, CustomMetricAggregate, CustomMetricType, RecordCustomMetricRequest};
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row};
 
 use crate::{error::{ApiError, ApiResult}, state::AppState};
 
@@ -34,7 +34,7 @@ pub struct MetricCatalogQuery {
 pub struct MetricSeriesResponse {
     pub contract_id: String,
     pub metric_name: String,
-    pub metric_type: CustomMetricType,
+    pub metric_type: Option<CustomMetricType>,
     pub resolution: String,
     pub points: Vec<MetricSeriesPoint>,
 }
@@ -57,7 +57,7 @@ pub struct MetricSeriesPoint {
 pub struct MetricSampleResponse {
     pub contract_id: String,
     pub metric_name: String,
-    pub metric_type: CustomMetricType,
+    pub metric_type: Option<CustomMetricType>,
     pub resolution: String,
     pub samples: Vec<MetricSample>,
 }
@@ -147,51 +147,46 @@ pub async fn get_contract_metrics(
     let limit = query.limit.unwrap_or(500).clamp(1, 5000);
 
     if resolution == "raw" {
-        let mut sql = String::from(
+        let mut qb = QueryBuilder::new(
             "SELECT id, contract_id, metric_name, metric_type, value, unit, metadata, ledger_sequence, \
              transaction_hash, timestamp, network, created_at \
-             FROM contract_custom_metrics WHERE contract_id = $1 AND metric_name = $2",
+             FROM contract_custom_metrics WHERE contract_id = ",
         );
-        let mut param_count = 2;
-        let mut bindings: Vec<String> = vec![contract_id.clone(), metric_name.clone()];
+        qb.push_bind(&contract_id);
+        qb.push(" AND metric_name = ");
+        qb.push_bind(&metric_name);
 
         if let Some(from_ts) = from_ts {
-            param_count += 1;
-            sql.push_str(&format!(" AND timestamp >= ${}", param_count));
-            bindings.push(from_ts.to_rfc3339());
+            qb.push(" AND timestamp >= ");
+            qb.push_bind(from_ts);
         }
 
         if let Some(to_ts) = to_ts {
-            param_count += 1;
-            sql.push_str(&format!(" AND timestamp <= ${}", param_count));
-            bindings.push(to_ts.to_rfc3339());
+            qb.push(" AND timestamp <= ");
+            qb.push_bind(to_ts);
         }
 
-        param_count += 1;
-        sql.push_str(&format!(" ORDER BY timestamp DESC LIMIT ${}", param_count));
-        bindings.push(limit.to_string());
+        qb.push(" ORDER BY timestamp DESC LIMIT ");
+        qb.push_bind(limit);
 
-        let mut query_builder = sqlx::query_as::<_, CustomMetric>(&sql);
-        for binding in bindings {
-            query_builder = query_builder.bind(binding);
-        }
-
-        let samples = query_builder
+        let samples = qb
+            .build_query_as::<CustomMetric>()
             .fetch_all(&state.db)
             .await
             .map_err(|e| db_error("fetch raw metrics", e))?;
 
         if samples.is_empty() {
+            let metric_type = fetch_metric_type(&state, &contract_id, &metric_name).await?;
             return Ok((StatusCode::OK, Json(MetricSampleResponse {
                 contract_id,
                 metric_name,
-                metric_type: CustomMetricType::Gauge,
+                metric_type,
                 resolution,
                 samples: Vec::new(),
             })).into_response());
         }
 
-        let metric_type = samples[0].metric_type.clone();
+        let metric_type = Some(samples[0].metric_type.clone());
         let series = MetricSampleResponse {
             contract_id,
             metric_name,
@@ -216,53 +211,53 @@ pub async fn get_contract_metrics(
         _ => ("contract_custom_metrics_hourly", "bucket_start"),
     };
 
-    let mut sql = format!(
+    let mut qb = QueryBuilder::new(format!(
         "SELECT contract_id, metric_name, metric_type, bucket_start, bucket_end, sample_count, \
          sum_value, avg_value, min_value, max_value, p50_value, p95_value, p99_value \
-         FROM {} WHERE contract_id = $1 AND metric_name = $2",
+         FROM {} WHERE contract_id = ",
         table
-    );
-
-    let mut param_count = 2;
-    let mut bindings: Vec<String> = vec![contract_id.clone(), metric_name.clone()];
+    ));
+    qb.push_bind(&contract_id);
+    qb.push(" AND metric_name = ");
+    qb.push_bind(&metric_name);
 
     if let Some(from_ts) = from_ts {
-        param_count += 1;
-        sql.push_str(&format!(" AND {} >= ${}", bucket_column, param_count));
-        bindings.push(from_ts.to_rfc3339());
+        qb.push(" AND ");
+        qb.push(bucket_column);
+        qb.push(" >= ");
+        qb.push_bind(from_ts);
     }
 
     if let Some(to_ts) = to_ts {
-        param_count += 1;
-        sql.push_str(&format!(" AND {} <= ${}", bucket_column, param_count));
-        bindings.push(to_ts.to_rfc3339());
+        qb.push(" AND ");
+        qb.push(bucket_column);
+        qb.push(" <= ");
+        qb.push_bind(to_ts);
     }
 
-    param_count += 1;
-    sql.push_str(&format!(" ORDER BY {} DESC LIMIT ${}", bucket_column, param_count));
-    bindings.push(limit.to_string());
+    qb.push(" ORDER BY ");
+    qb.push(bucket_column);
+    qb.push(" DESC LIMIT ");
+    qb.push_bind(limit);
 
-    let mut query_builder = sqlx::query_as::<_, CustomMetricAggregate>(&sql);
-    for binding in bindings {
-        query_builder = query_builder.bind(binding);
-    }
-
-    let points = query_builder
+    let points = qb
+        .build_query_as::<CustomMetricAggregate>()
         .fetch_all(&state.db)
         .await
         .map_err(|e| db_error("fetch aggregated metrics", e))?;
 
     if points.is_empty() {
+        let metric_type = fetch_metric_type(&state, &contract_id, &metric_name).await?;
         return Ok((StatusCode::OK, Json(MetricSeriesResponse {
             contract_id,
             metric_name,
-            metric_type: CustomMetricType::Gauge,
+            metric_type,
             resolution,
             points: Vec::new(),
         })).into_response());
     }
 
-    let metric_type = points[0].metric_type.clone();
+    let metric_type = Some(points[0].metric_type.clone());
     let series = MetricSeriesResponse {
         contract_id,
         metric_name,
@@ -286,6 +281,25 @@ pub async fn get_contract_metrics(
     };
 
     Ok((StatusCode::OK, Json(series)).into_response())
+}
+
+async fn fetch_metric_type(
+    state: &AppState,
+    contract_id: &str,
+    metric_name: &str,
+) -> ApiResult<Option<CustomMetricType>> {
+    let metric_type = sqlx::query_scalar::<_, CustomMetricType>(
+        "SELECT metric_type FROM contract_custom_metrics \
+         WHERE contract_id = $1 AND metric_name = $2 \
+         ORDER BY timestamp DESC LIMIT 1",
+    )
+    .bind(contract_id)
+    .bind(metric_name)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| db_error("fetch metric type", e))?;
+
+    Ok(metric_type)
 }
 
 pub async fn record_contract_metric(

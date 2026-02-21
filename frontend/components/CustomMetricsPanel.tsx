@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, MetricCatalogEntry, MetricSeriesResponse } from '@/lib/api';
+import { api, MetricCatalogEntry } from '@/lib/api';
 import { Activity, BarChart3, Clock3, LineChart } from 'lucide-react';
 
 function toNumber(value?: number) {
@@ -44,14 +44,28 @@ export default function CustomMetricsPanel({ contractId }: Props) {
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [resolution, setResolution] = useState<'hour' | 'day'>('hour');
 
-  const { data: catalog, isLoading: catalogLoading } = useQuery({
+  const {
+    data: catalog,
+    isLoading: catalogLoading,
+    isError: catalogError,
+  } = useQuery({
     queryKey: ['custom-metrics-catalog', contractId],
     queryFn: () => api.getCustomMetricCatalog(contractId),
   });
 
+  useEffect(() => {
+    if (!selectedMetric && catalog && catalog.length > 0) {
+      setSelectedMetric(catalog[0].metric_name);
+    }
+  }, [catalog, selectedMetric]);
+
   const metricName = selectedMetric || catalog?.[0]?.metric_name;
 
-  const { data: series, isLoading: seriesLoading } = useQuery({
+  const {
+    data: series,
+    isLoading: seriesLoading,
+    isError: seriesError,
+  } = useQuery({
     queryKey: ['custom-metrics-series', contractId, metricName, resolution],
     queryFn: () =>
       api.getCustomMetricSeries(contractId, metricName || '', {
@@ -73,6 +87,8 @@ export default function CustomMetricsPanel({ contractId }: Props) {
       .map((point) => toNumber(point.avg_value ?? point.sum_value ?? point.p50_value));
     return buildSparkline(values);
   }, [series]);
+
+  const metricTypeLabel = series?.metric_type ?? 'unknown';
 
   const metrics = useMemo(() => {
     if (!series) return [];
@@ -115,6 +131,8 @@ export default function CustomMetricsPanel({ contractId }: Props) {
 
       {catalogLoading ? (
         <div className="text-sm text-gray-500 dark:text-gray-400">Loading metrics…</div>
+      ) : catalogError ? (
+        <div className="text-sm text-red-600 dark:text-red-400">Failed to load custom metrics.</div>
       ) : catalog && catalog.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {catalog.map((entry: MetricCatalogEntry) => (
@@ -137,17 +155,21 @@ export default function CustomMetricsPanel({ contractId }: Props) {
 
       {seriesLoading ? (
         <div className="text-sm text-gray-500 dark:text-gray-400">Loading series…</div>
+      ) : seriesError ? (
+        <div className="text-sm text-red-600 dark:text-red-400">Failed to load metric series.</div>
       ) : series && series.points && series.points.length > 0 ? (
         <div className="space-y-4">
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-4">
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-500 dark:text-gray-400">Last {series.points.length} buckets</div>
               <div className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                {series.metric_type}
+                {metricTypeLabel}
               </div>
             </div>
             <svg viewBox="0 0 320 80" className="w-full h-20 mt-2">
-              <path d={sparkline} stroke="#2563eb" strokeWidth="2" fill="none" />
+              {sparkline ? (
+                <path d={sparkline} stroke="#2563eb" strokeWidth="2" fill="none" />
+              ) : null}
             </svg>
           </div>
 

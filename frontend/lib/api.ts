@@ -139,7 +139,7 @@ export interface MetricSample {
 export interface MetricSeriesResponse {
   contract_id: string;
   metric_name: string;
-  metric_type: CustomMetricType;
+  metric_type: CustomMetricType | null;
   resolution: 'hour' | 'day' | 'raw';
   points?: MetricSeriesPoint[];
   samples?: MetricSample[];
