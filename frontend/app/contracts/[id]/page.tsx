@@ -17,6 +17,12 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import FormalVerificationPanel from "@/components/FormalVerificationPanel";
+import Navbar from "@/components/Navbar";
+import MaintenanceBanner from "@/components/MaintenanceBanner";
+import { useQueryClient } from "@tanstack/react-query";
+
+// Mock for maintenance status since it was missing in the original file view but used in code
+const maintenanceStatus = { is_maintenance: false, current_window: null };
 
 
 function ContractDetailsContent() {
@@ -189,7 +195,8 @@ function ContractDetailsContent() {
 
 export default function ContractPage() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-background text-foreground">
+      <Navbar />
       <Suspense fallback={null}>
         <ContractDetailsContent />
       </Suspense>
