@@ -3,6 +3,9 @@ use clap::{Parser, Subcommand};
 use colored::*;
 use serde_json::json;
 use soroban_lint_core::{Analyzer, AutoFixer, Diagnostic, LintConfig, Severity};
+use soroban_load_balancer::{
+    BalancingAlgorithm, LoadBalancer, LoadBalancerConfig, Region,
+};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -55,6 +58,79 @@ enum Commands {
         #[arg(long, default_value = "human")]
         format: String,
     },
+
+    /// Manage contract load balancing
+    Balancer {
+        #[command(subcommand)]
+        action: BalancerCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum BalancerCommands {
+    /// Start the load balancer with registered instances
+    Start {
+        /// Algorithm to use: round-robin | least-loaded | geographic
+        #[arg(long, default_value = "round-robin")]
+        algorithm: String,
+
+        /// Path to instances config JSON file
+        #[arg(long)]
+        config: String,
+    },
+
+    /// Show current load balancer status and metrics
+    Status {
+        #[arg(long, default_value = "human")]
+        format: String,
+
+        /// Path to instances config JSON file (optional; if not set, reports empty pool)
+        #[arg(long)]
+        config: Option<String>,
+    },
+
+    /// Register a new contract instance
+    Register {
+        /// Unique instance ID
+        #[arg(long)]
+        id: String,
+
+        /// Contract ID (Stellar strkey)
+        #[arg(long)]
+        contract_id: String,
+
+        /// RPC endpoint URL
+        #[arg(long)]
+        rpc: String,
+
+        /// Geographic region
+        #[arg(long, default_value = "us-east")]
+        region: String,
+
+        /// Instance weight (higher = more traffic)
+        #[arg(long, default_value = "1")]
+        weight: u32,
+    },
+
+    /// Remove an instance from the pool
+    Remove {
+        /// Instance ID to remove
+        id: String,
+    },
+
+    /// Route a test request and show which instance was selected
+    Route {
+        /// Optional session key for affinity testing
+        #[arg(long)]
+        session: Option<String>,
+
+        #[arg(long, default_value = "human")]
+        format: String,
+
+        /// Path to instances config JSON file (optional; required to have instances to route to)
+        #[arg(long)]
+        config: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -74,6 +150,9 @@ fn main() -> Result<()> {
         }
         Commands::Rules { format } => {
             rules_command(format)?;
+        }
+        Commands::Balancer { action } => {
+            balancer_command(action)?;
         }
     }
 
