@@ -71,6 +71,8 @@ pub struct ContractVersion {
     pub commit_hash: Option<String>,
     pub release_notes: Option<String>,
     pub created_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_schema: Option<serde_json::Value>,
 }
 
 /// Verification status and details
@@ -185,6 +187,17 @@ pub struct ContractDependency {
     pub dependency_name: String,
     pub dependency_contract_id: Option<Uuid>,
     pub version_constraint: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Tracks migration scripts between contract versions
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct MigrationScript {
+    pub id: Uuid,
+    pub from_version: Uuid,
+    pub to_version: Uuid,
+    pub script_path: String,
+    pub checksum: String,
     pub created_at: DateTime<Utc>,
 }
 

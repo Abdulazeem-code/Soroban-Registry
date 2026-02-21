@@ -118,6 +118,18 @@ pub enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Analyze upgrades between two contract versions or schema files
+    UpgradeAnalyze {
+        /// Old contract version ID or local schema JSON file
+        old: String,
+
+        /// New contract version ID or local schema JSON file
+        new: String,
+
+        /// Output JSON
+        #[arg(long)]
+        json: bool,
+    },
 
     /// Export a contract archive (.tar.gz)
     Export {
@@ -657,6 +669,10 @@ async fn main() -> Result<()> {
                 dry_run
             );
             commands::migrate(&cli.api_url, &contract_id, &wasm, simulate_fail, dry_run).await?;
+        }
+        Commands::UpgradeAnalyze { old, new, json } => {
+            log::debug!("Command: upgrade analyze | old={} new={}", old, new);
+            commands::upgrade_analyze(&cli.api_url, &old, &new, json).await?;
         }
         Commands::Export {
             id,
