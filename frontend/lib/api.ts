@@ -50,6 +50,8 @@ export interface ContractSearchParams {
   tags?: string[];
   page?: number;
   page_size?: number;
+  sort_by?: 'created_at' | 'updated_at' | 'popularity' | 'deployments' | 'interactions' | 'relevance';
+  sort_order?: 'asc' | 'desc';
 }
 
 export interface PublishRequest {
@@ -75,6 +77,8 @@ export const api = {
     if (params?.category) queryParams.append('category', params.category);
     if (params?.page) queryParams.append('page', String(params.page));
     if (params?.page_size) queryParams.append('page_size', String(params.page_size));
+    if (params?.sort_by) queryParams.append('sort_by', params.sort_by);
+    if (params?.sort_order) queryParams.append('sort_order', params.sort_order);
 
     const response = await fetch(apiUrl(`/api/contracts?${queryParams}`));
     if (!response.ok) throw new Error('Failed to fetch contracts');

@@ -1,31 +1,47 @@
 'use client';
 
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, ContractSearchParams } from '@/lib/api';
+import { api, ContractSearchParams, Contract } from '@/lib/api';
 import ContractCard from '@/components/ContractCard';
-import { Search, Filter, Package } from 'lucide-react';
-import { useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Search, Filter, Package, ArrowUpDown } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 export function ContractsContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const initialQuery = searchParams.get('query') || '';
-  
+
   const [filters, setFilters] = useState<ContractSearchParams>({
-    query: initialQuery,
-    page: 1,
+    query: searchParams.get('query') || '',
+    network: (searchParams.get('network') as ContractSearchParams['network']) || undefined,
+    verified_only: searchParams.get('verified_only') === 'true',
+    sort_by: (searchParams.get('sort_by') as ContractSearchParams['sort_by']) || (searchParams.get('query') ? 'relevance' : 'created_at'),
+    sort_order: (searchParams.get('sort_order') as ContractSearchParams['sort_order']) || 'desc',
+    page: parseInt(searchParams.get('page') || '1'),
     page_size: 12,
-    verified_only: false,
   });
+
+  // Sync state with URL
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filters.query) params.set('query', filters.query);
+    if (filters.network) params.set('network', filters.network);
+    if (filters.verified_only) params.set('verified_only', 'true');
+    if (filters.sort_by) params.set('sort_by', filters.sort_by);
+    if (filters.sort_order) params.set('sort_order', filters.sort_order);
+    if (filters.page && filters.page > 1) params.set('page', filters.page.toString());
+
+    router.push(`?${params.toString()}`, { scroll: false });
+  }, [filters, router]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['contracts', filters],
     queryFn: () => api.getContracts(filters),
   });
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setFilters({ ...filters, page: 1 });
+    setFilters(prev => ({ ...prev, query: prev.query, page: 1 }));
   };
 
   return (
@@ -67,7 +83,7 @@ export function ContractsContent() {
             <input
               type="checkbox"
               checked={filters.verified_only || false}
-              onChange={(e) => setFilters({ ...filters, verified_only: e.target.checked, page: 1 })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilters(prev => ({ ...prev, verified_only: e.target.checked, page: 1 }))}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-sm text-gray-700 dark:text-gray-300">
@@ -77,13 +93,44 @@ export function ContractsContent() {
 
           <select
             value={filters.network || ''}
-            onChange={(e) => setFilters({ ...filters, network: e.target.value as any, page: 1 })}
-            className="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300"
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters(prev => ({ ...prev, network: e.target.value as ContractSearchParams['network'], page: 1 }))}
+            className="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Networks</option>
             <option value="mainnet">Mainnet</option>
             <option value="testnet">Testnet</option>
             <option value="futurenet">Futurenet</option>
+          </select>
+
+          <div className="h-6 w-px bg-gray-200 dark:bg-gray-800 self-center hidden sm:block" />
+
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="w-4 h-4 text-gray-500" />
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Sort:
+            </span>
+          </div>
+
+          <select
+            value={filters.sort_by || ''}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters(prev => ({ ...prev, sort_by: e.target.value as ContractSearchParams['sort_by'], page: 1 }))}
+            className="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="created_at">Newest First</option>
+            <option value="updated_at">Recently Updated</option>
+            <option value="popularity">Most Popular</option>
+            <option value="deployments">Most Deployed</option>
+            <option value="interactions">Most Interactions</option>
+            {filters.query && <option value="relevance">Relevance</option>}
+          </select>
+
+          <select
+            value={filters.sort_order || 'desc'}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters(prev => ({ ...prev, sort_order: e.target.value as ContractSearchParams['sort_order'], page: 1 }))}
+            className="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="desc">Descending</option>
+            <option value="asc">Ascending</option>
           </select>
         </div>
       </div>
@@ -98,9 +145,9 @@ export function ContractsContent() {
           <div className="mb-4 text-sm text-gray-600 dark:text-gray-400">
             Showing {data.items.length} of {data.total} contracts
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            {data.items.map((contract) => (
+            {data.items.map((contract: Contract) => (
               <ContractCard key={contract.id} contract={contract} />
             ))}
           </div>
@@ -115,11 +162,11 @@ export function ContractsContent() {
               >
                 Previous
               </button>
-              
+
               <span className="text-sm text-gray-600 dark:text-gray-400">
                 Page {filters.page || 1} of {data.total_pages}
               </span>
-              
+
               <button
                 onClick={() => setFilters({ ...filters, page: (filters.page || 1) + 1 })}
                 disabled={(filters.page || 1) >= data.total_pages}

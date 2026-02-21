@@ -3,6 +3,7 @@ use axum::{
         rejection::{JsonRejection, QueryRejection},
         Path, Query, State,
     },
+    http::StatusCode,
     Json,
 };
 use shared::{
@@ -109,13 +110,29 @@ pub async fn list_contracts(
     let page_size = params.page_size.unwrap_or(20).min(100);
     let offset = (page - 1) * page_size;
 
-    // Build dynamic query based on filters
-    let mut query = String::from("SELECT * FROM contracts WHERE 1=1");
+    let sort_by = params.sort_by.clone().unwrap_or_else(|| {
+        if params.query.is_some() {
+            shared::SortBy::Relevance
+        } else {
+            shared::SortBy::CreatedAt
+        }
+    });
+    let sort_order = params.sort_order.clone().unwrap_or(shared::SortOrder::Desc);
+
+    // Build dynamic query with aggregations
+    let mut query = String::from(
+        "SELECT c.*
+         FROM contracts c
+         LEFT JOIN contract_interactions ci ON c.id = ci.contract_id
+         LEFT JOIN contract_versions cv ON c.id = cv.contract_id
+         WHERE 1=1"
+    );
     let mut count_query = String::from("SELECT COUNT(*) FROM contracts WHERE 1=1");
 
     if let Some(ref q) = params.query {
+        // Simple search ranking - PostgreSQL FTS could be used for more advanced relevance
         let search_clause = format!(
-            " AND (name ILIKE '%{}%' OR description ILIKE '%{}%')",
+            " AND (c.name ILIKE '%{}%' OR c.description ILIKE '%{}%')",
             q, q
         );
         query.push_str(&search_clause);
@@ -124,18 +141,45 @@ pub async fn list_contracts(
 
     if let Some(verified) = params.verified_only {
         if verified {
-            query.push_str(" AND is_verified = true");
+            query.push_str(" AND c.is_verified = true");
             count_query.push_str(" AND is_verified = true");
         }
     }
 
     if let Some(ref category) = params.category {
-        let category_clause = format!(" AND category = '{}'", category);
+        let category_clause = format!(" AND c.category = '{}'", category);
         query.push_str(&category_clause);
         count_query.push_str(&category_clause);
     }
 
-    query.push_str(&format!(" ORDER BY created_at DESC LIMIT {} OFFSET {}", page_size, offset));
+    query.push_str(" GROUP BY c.id");
+
+    // Sorting logic using aggregations in ORDER BY
+    let order_by = match sort_by {
+        shared::SortBy::CreatedAt => "c.created_at".to_string(),
+        shared::SortBy::UpdatedAt => "c.updated_at".to_string(),
+        shared::SortBy::Popularity | shared::SortBy::Interactions => "COUNT(DISTINCT ci.id)".to_string(),
+        shared::SortBy::Deployments => "COUNT(DISTINCT cv.id)".to_string(),
+        shared::SortBy::Relevance => {
+            if let Some(ref q) = params.query {
+                format!(
+                    "CASE WHEN c.name ILIKE '{}' THEN 0 
+                          WHEN c.name ILIKE '%{}%' THEN 1 
+                          ELSE 2 END",
+                    q, q
+                )
+            } else {
+                "c.created_at".to_string()
+            }
+        }
+    };
+
+    let direction = if sort_order == shared::SortOrder::Asc { "ASC" } else { "DESC" };
+    
+    query.push_str(&format!(
+        " ORDER BY {} {}, c.id DESC LIMIT {} OFFSET {}",
+        order_by, direction, page_size, offset
+    ));
 
     let contracts: Vec<Contract> = sqlx::query_as(&query)
         .fetch_all(&state.db)
