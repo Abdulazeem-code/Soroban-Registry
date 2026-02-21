@@ -83,6 +83,15 @@ pub enum VerificationStatus {
     Failed,
 }
 
+/// Contract maturity level - indicates stability and production readiness
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum MaturityLevel {
+    Experimental,
+    Beta,
+    Stable,
+    Production,
+}
+
 /// Publisher/developer information
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Publisher {
@@ -848,13 +857,9 @@ pub struct ContractAuditLog {
     pub new_value: Option<serde_json::Value>,
     pub changed_by: String,
     pub timestamp: DateTime<Utc>,
-    pub old_value:   Option<serde_json::Value>,
-    pub new_value:   Option<serde_json::Value>,
-    pub changed_by:  String,
-    pub timestamp:   DateTime<Utc>,
     pub previous_hash: Option<String>,
-    pub hash:        Option<String>,
-    pub signature:   Option<String>,
+    pub hash: Option<String>,
+    pub signature: Option<String>,
 }
 
 /// Full contract state captured at each audited change in `contract_snapshots`.
@@ -1033,83 +1038,76 @@ impl std::fmt::Display for ResidencyDecision {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Allowed => write!(f, "allowed"),
-            Self::Denied  => write!(f, "denied"),
+            Self::Denied => write!(f, "denied"),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ResidencyPolicy {
-    pub id:              Uuid,
-    pub contract_id:     String,
+    pub id: Uuid,
+    pub contract_id: String,
     pub allowed_regions: Vec<String>,
-    pub description:     Option<String>,
-    pub is_active:       bool,
-    pub created_by:      String,
-    pub created_at:      DateTime<Utc>,
-    pub updated_at:      DateTime<Utc>,
+    pub description: Option<String>,
+    pub is_active: bool,
+    pub created_by: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ResidencyAuditLog {
-    pub id:               Uuid,
-    pub policy_id:        Uuid,
-    pub contract_id:      String,
+    pub id: Uuid,
+    pub policy_id: Uuid,
+    pub contract_id: String,
     pub requested_region: String,
-    pub decision:         ResidencyDecision,
-    pub action:           String,
-    pub requested_by:     Option<String>,
-    pub reason:           Option<String>,
-    pub created_at:       DateTime<Utc>,
+    pub decision: ResidencyDecision,
+    pub action: String,
+    pub requested_by: Option<String>,
+    pub reason: Option<String>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ResidencyViolation {
-    pub id:               Uuid,
-    pub policy_id:        Uuid,
-    pub contract_id:      String,
+    pub id: Uuid,
+    pub policy_id: Uuid,
+    pub contract_id: String,
     pub attempted_region: String,
-    pub action:           String,
-    pub attempted_by:     Option<String>,
-    pub prevented_at:     DateTime<Utc>,
+    pub action: String,
+    pub attempted_by: Option<String>,
+    pub prevented_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateResidencyPolicyRequest {
-    pub contract_id:     String,
+    pub contract_id: String,
     pub allowed_regions: Vec<String>,
-    pub description:     Option<String>,
-    pub created_by:      String,
+    pub description: Option<String>,
+    pub created_by: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateResidencyPolicyRequest {
     pub allowed_regions: Option<Vec<String>>,
-    pub description:     Option<String>,
-    pub is_active:       Option<bool>,
+    pub description: Option<String>,
+    pub is_active: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckResidencyRequest {
-    pub policy_id:        Uuid,
-    pub contract_id:      String,
+    pub policy_id: Uuid,
+    pub contract_id: String,
     pub requested_region: String,
-    pub action:           String,
-    pub requested_by:     Option<String>,
+    pub action: String,
+    pub requested_by: Option<String>,
 }
 
-impl std::fmt::Display for DeploymentEnvironment {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DeploymentEnvironment::Blue => write!(f, "blue"),
-            DeploymentEnvironment::Green => write!(f, "green"),
-        }
-    }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListResidencyLogsParams {
     pub contract_id: Option<String>,
-    pub limit:       Option<i64>,
-    pub page:        Option<i64>,
+    pub limit: Option<i64>,
+    pub page: Option<i64>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

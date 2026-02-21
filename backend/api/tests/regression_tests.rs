@@ -13,7 +13,7 @@ mod tests {
         // Verify that our types compile correctly
         let test_status = "passed";
         let severity = "minor";
-        
+
         assert_eq!(test_status, "passed");
         assert_eq!(severity, "minor");
     }
@@ -78,7 +78,7 @@ mod tests {
         let degradation = ((current_time - baseline_time) / baseline_time) * 100.0;
 
         assert_eq!(degradation, 30.0);
-        
+
         // Should trigger major regression (>25%)
         assert!(degradation > 25.0);
         assert!(degradation < 50.0);
@@ -96,7 +96,7 @@ mod tests {
 
         assert_eq!(accuracy, 98.0);
         assert_eq!(fpr, 2.0);
-        
+
         // Meets acceptance criteria
         assert!(accuracy >= 95.0);
         assert!(fpr < 2.0 || fpr == 2.0); // Allow exactly 2%

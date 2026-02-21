@@ -127,10 +127,6 @@ pub async fn get_stats(State(state): State<AppState>) -> ApiResult<Json<serde_js
     })))
 }
 
-        "total_publishers": total_publishers,
-    })))
-}
-
 /// List and search contracts
 pub async fn list_contracts(
     State(state): State<AppState>,
