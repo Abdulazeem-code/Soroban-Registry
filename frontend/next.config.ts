@@ -1,3 +1,4 @@
+import path from "path";
 import type { NextConfig } from "next";
 
 const apiOrigin = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -51,6 +52,7 @@ const nextConfig: NextConfig = {
     // Minimum cache TTL for optimized images (seconds)
     minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
   },
+  turbopack: { root: path.join(__dirname) },
   async rewrites() {
     return [
       {
