@@ -173,6 +173,8 @@ export interface MetricSeriesResponse {
   resolution: 'hour' | 'day' | 'raw';
   points?: MetricSeriesPoint[];
   samples?: MetricSample[];
+}
+
 export type DeprecationStatus = 'active' | 'deprecated' | 'retired';
 
 export interface DeprecationInfo {
@@ -413,7 +415,7 @@ export const api = {
     );
 
     const url = new URL(`${API_URL}/api/contracts/${id}`);
-    if (network) url.searchParams.set("network", network);
+    if (network != null) url.searchParams.set("network", String(network));
     const response = await fetch(url.toString());
     if (!response.ok) throw new Error("Failed to fetch contract");
     return response.json();
