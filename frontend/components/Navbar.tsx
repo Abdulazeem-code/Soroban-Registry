@@ -23,6 +23,12 @@ export default function Navbar() {
                             Browse
                         </Link>
                         <Link
+                            href="/publishers/GBSX...2J4K"
+                            className="text-muted-foreground hover:text-foreground transition-colors text-sm font-medium"
+                        >
+                            Publisher
+                        </Link>
+                        <Link
                             href="/graph"
                             className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm font-medium"
                         >
