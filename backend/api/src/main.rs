@@ -1,33 +1,29 @@
 #![allow(dead_code, unused)]
 
-mod routes;
-mod handlers;
-mod batch_verify_handlers;
 mod aggregation;
-mod error;
-mod handlers;
-mod rate_limit;
-mod routes;
-mod state;
-mod validation;
-// mod auth;
-// mod auth_handlers;
-mod cache;
-mod metrics;
-mod metrics_handler;
-// mod resource_handlers;
-// mod resource_tracking;
 mod analytics;
 mod breaking_changes;
+mod cache;
+mod compatibility_testing_handlers;
 mod custom_metrics_handlers;
 mod dependency;
 mod deprecation_handlers;
+mod error;
+mod handlers;
 pub mod health_monitor;
-mod deprecation_handlers;
-pub mod health_monitor;
+mod metrics;
+mod metrics_handler;
+mod rate_limit;
 pub mod request_tracing;
+mod routes;
 pub mod signing_handlers;
+mod state;
 mod type_safety;
+mod validation;
+// mod auth;
+// mod auth_handlers;
+// mod resource_handlers;
+// mod resource_tracking;
 
 use anyhow::Result;
 use axum::http::{header, HeaderValue, Method};
@@ -95,6 +91,7 @@ async fn main() -> Result<()> {
         .merge(routes::publisher_routes())
         .merge(routes::health_routes())
         .merge(routes::migration_routes())
+        .merge(routes::compatibility_dashboard_routes())
         .fallback(handlers::route_not_found)
         .layer(middleware::from_fn(request_tracing::tracing_middleware))
         .layer(middleware::from_fn_with_state(

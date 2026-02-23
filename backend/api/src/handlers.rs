@@ -33,7 +33,6 @@ use crate::{
     state::AppState,
     type_safety::parser::parse_json_spec,
     type_safety::{generate_openapi, to_json, to_yaml},
-    dependency,
 };
 
 pub(crate) fn db_internal_error(operation: &str, err: sqlx::Error) -> ApiError {

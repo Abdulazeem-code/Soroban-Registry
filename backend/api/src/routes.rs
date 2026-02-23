@@ -4,8 +4,8 @@ use axum::{
 };
 
 use crate::{
-    breaking_changes, custom_metrics_handlers, deprecation_handlers, handlers, metrics_handler,
-    state::AppState,
+    breaking_changes, compatibility_testing_handlers, custom_metrics_handlers,
+    deprecation_handlers, handlers, metrics_handler, state::AppState,
 };
 
 pub fn observability_routes() -> Router<AppState> {
@@ -126,15 +126,27 @@ pub fn contract_routes() -> Router<AppState> {
             "/api/contracts/:id/metrics/catalog",
             get(custom_metrics_handlers::get_metric_catalog),
         )
-        // .route(
-        //     "/api/contracts/:id/compatibility",
-        //     get(compatibility_handlers::get_contract_compatibility)
-        //         .post(compatibility_handlers::add_contract_compatibility),
-        // )
-        // .route(
-        //     "/api/contracts/:id/compatibility/export",
-        //     get(compatibility_handlers::export_contract_compatibility),
-        // )
+        // SDK / Wasm / Network Compatibility Testing Matrix (Issue #261)
+        .route(
+            "/api/contracts/:id/compatibility-matrix",
+            get(compatibility_testing_handlers::get_compatibility_matrix),
+        )
+        .route(
+            "/api/contracts/:id/compatibility-matrix/test",
+            post(compatibility_testing_handlers::run_compatibility_test),
+        )
+        .route(
+            "/api/contracts/:id/compatibility-matrix/history",
+            get(compatibility_testing_handlers::get_compatibility_history),
+        )
+        .route(
+            "/api/contracts/:id/compatibility-matrix/notifications",
+            get(compatibility_testing_handlers::get_compatibility_notifications),
+        )
+        .route(
+            "/api/contracts/:id/compatibility-matrix/notifications/read",
+            post(compatibility_testing_handlers::mark_notifications_read),
+        )
         .route(
             "/api/contracts/:id/deployments/status",
             get(handlers::get_deployment_status),
@@ -163,6 +175,14 @@ pub fn health_routes() -> Router<AppState> {
 
 pub fn migration_routes() -> Router<AppState> {
     Router::new()
+}
+
+pub fn compatibility_dashboard_routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/api/compatibility-dashboard",
+            get(compatibility_testing_handlers::get_compatibility_dashboard),
+        )
 }
 
 pub fn canary_routes() -> Router<AppState> {
