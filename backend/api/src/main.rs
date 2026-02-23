@@ -10,7 +10,10 @@ mod dependency;
 mod deprecation_handlers;
 mod error;
 mod handlers;
+mod health;
 pub mod health_monitor;
+#[cfg(test)]
+mod health_tests;
 mod metrics;
 mod metrics_handler;
 mod rate_limit;
@@ -24,15 +27,6 @@ mod validation;
 // mod auth_handlers;
 // mod resource_handlers;
 // mod resource_tracking;
-mod analytics;
-mod breaking_changes;
-mod custom_metrics_handlers;
-mod dependency;
-mod deprecation_handlers;
-pub mod health_monitor;
-pub mod request_tracing;
-pub mod signing_handlers;
-mod type_safety;
 
 use anyhow::Result;
 use axum::http::{header, HeaderValue, Method};
