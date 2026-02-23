@@ -42,8 +42,10 @@ impl<'ast> Visit<'ast> for AuthCheckVisitor {
 
             // Check if it has require_auth
             if !code_str.contains("require_auth") && !code_str.contains("env.require_auth") {
-                // Check if it modifies state
-                if code_str.contains(".set(") || code_str.contains("storage().") {
+                // Check if it modifies state - handle quote::quote! spacing variations
+                let has_set = code_str.contains(". set (") || code_str.contains(".set(");
+                let has_storage = code_str.contains("storage ()") || code_str.contains("storage()");
+                if has_set || has_storage {
                     let fn_name = node.sig.ident.to_string();
                     if !fn_name.starts_with("get") && !fn_name.starts_with("view") {
                         let diag = Diagnostic::new(

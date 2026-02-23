@@ -39,8 +39,9 @@ impl<'ast> Visit<'ast> for ReentrancyVisitor {
         let code_str = quote::quote!(#node).to_string();
 
         // Check for cross-contract calls before state writes
-        let call_idx = first_index(&code_str, &["invoke_contract", "invoke", ".call("]);
-        let write_idx = first_index(&code_str, &[".set(", "storage().", "write"]);
+        // Note: quote::quote! may add spaces around parens, so we search for multiple patterns
+        let call_idx = first_index(&code_str, &["invoke_contract", "invoke", ". call (", ".call("]);
+        let write_idx = first_index(&code_str, &[". set (", ".set(", "storage ()", "storage()", "write"]);
 
         if let (Some(call_pos), Some(write_pos)) = (call_idx, write_idx) {
             if call_pos < write_pos {
